@@ -1,6 +1,6 @@
 pragma solidity ^0.5.16;
 
-import "./StakingRewardsLock.sol";
+import "../interfaces/StakingRewardsLock.sol";
 import "./DS.sol";
 import "compound-finance/compound-protocol@2.8.1/contracts/CErc20Delegator.sol";
 import "openzeppelin/openzeppelin-contracts@2.5.0/contracts/token/ERC20/IERC20.sol";
