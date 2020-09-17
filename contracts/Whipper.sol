@@ -21,7 +21,7 @@ contract Whipper {
     address constant CR_CREAM = 0x892B14321a4FCba80669aE30Bd0cd99a7ECF6aC0;
 
     // Pool
-    address constant CREAM_POOL = 0x71A808Fd21171d992ebc17678e8ae139079922d0;
+    address constant CREAM_POOL = 0x224061756c150e5048a1e4a3E6E066db35037462;
 
     IERC20 public cream = IERC20(0x2ba592F78dB6436527729929AAf6c908497cB200);
     CErc20Delegator public crCream = CErc20Delegator(0x892B14321a4FCba80669aE30Bd0cd99a7ECF6aC0);
@@ -34,7 +34,7 @@ contract Whipper {
     address public owner;
     bool public breaker = true;
 
-    DSToken wCream;
+    DSToken public wCream;
 
     function setBreaker(bool _breaker) public onlyOwner {
         breaker = _breaker;
