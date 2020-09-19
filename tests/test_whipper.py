@@ -1,6 +1,7 @@
 import pytest
 import os
 from dotenv import load_dotenv, find_dotenv
+from math import isclose
 load_dotenv(find_dotenv())
 
 from brownie import *
@@ -11,17 +12,19 @@ def me():
 
 
 @pytest.fixture
+def other():
+    return a[0] # some random account given with ganache-cli
+
+
+@pytest.fixture
 def whipper(me):
     return me.deploy(Whipper)
 
 
 def test_lifecycle(whipper, me, pm):
     print("finding tokens...")
-    staking_rewards_lock = interface.StakingRewardsLock(whipper.creamPool())
-    ieip20 = pm("compound-finance/compound-protocol@2.8.1").CErc20
-    cream = ieip20.at(whipper.cream())
+    staking_rewards_lock, cream, w_cream = get_tokens(whipper, pm)
     cream_starting_bal = cream.balanceOf(me)
-    w_cream = ieip20.at(whipper.wCream())
     print("found tokens")
 
     print("approving cream token for spend in whipper")
@@ -59,6 +62,36 @@ def test_lifecycle(whipper, me, pm):
     assert cream.balanceOf(me) > cream_starting_bal + my_new_bal
 
 
+def test_balances(whipper, me, other, pm):
+    _, cream, w_cream = get_tokens(whipper, pm)
+    approve_token(cream, me, whipper)
+
+    my_balance = cream.balanceOf(me)
+    to_send = my_balance / 3
+
+    print("my_balance is ", my_balance)
+    print("to_send is ", to_send)
+
+    cream.transfer(other, to_send, {'from': me})
+
+    my_balance = cream.balanceOf(me)
+    user_ratio = my_balance / to_send
+
+    approve_token(cream, other, whipper)
+
+    whipper.depositAll({'from': me})
+    whipper.depositAll({'from': other})
+
+    assert isclose(w_cream.balanceOf(me), w_cream.balanceOf(other) * user_ratio, rel_tol=0.00001)
+
 
 def approve_token(token, me, spender):
     token.approve(spender, token.balanceOf(me), {'from': me})
+
+
+def get_tokens(whipper, pm):
+    staking_rewards_lock = interface.StakingRewardsLock(whipper.creamPool())
+    ieip20 = pm("compound-finance/compound-protocol@2.8.1").CErc20
+    cream = ieip20.at(whipper.cream())
+    w_cream = ieip20.at(whipper.wCream())
+    return staking_rewards_lock, cream, w_cream
