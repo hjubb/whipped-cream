@@ -13,12 +13,12 @@ def me():
 
 @pytest.fixture
 def other():
-    return a[0] # some random account given with ganache-cli
+    return a[0]  # some random account given with ganache-cli
 
 
 @pytest.fixture
 def whipper(me):
-    return me.deploy(Whipper)
+    return Whipper.at(os.getenv("CONTRACT_MAINNET_ADDRESS"))
 
 
 def test_lifecycle(whipper, me, pm):
