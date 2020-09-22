@@ -5,8 +5,9 @@ import "./DS.sol";
 import "compound-finance/compound-protocol@2.8.1/contracts/CErc20Delegator.sol";
 import "openzeppelin/openzeppelin-contracts@2.5.0/contracts/token/ERC20/IERC20.sol";
 import "openzeppelin/openzeppelin-contracts@2.5.0/contracts/math/SafeMath.sol";
+import "openzeppelin/openzeppelin-contracts@2.5.0/contracts/utils/ReentrancyGuard.sol";
 
-contract Whipper {
+contract Whipper is ReentrancyGuard {
 
     using SafeMath for uint256;
 
@@ -21,12 +22,12 @@ contract Whipper {
     address constant CR_CREAM = 0x892B14321a4FCba80669aE30Bd0cd99a7ECF6aC0;
 
     // Pool
-    address constant CREAM_POOL = 0x224061756c150e5048a1e4a3E6E066db35037462;
+    address constant DEPLOYED_CREAM_POOL = 0x224061756c150e5048a1e4a3E6E066db35037462;
 
     IERC20 public cream = IERC20(0x2ba592F78dB6436527729929AAf6c908497cB200);
     CErc20Delegator public crCream = CErc20Delegator(0x892B14321a4FCba80669aE30Bd0cd99a7ECF6aC0);
 
-    StakingRewardsLock public creamPool = StakingRewardsLock(CREAM_POOL);
+    StakingRewardsLock public creamPool = StakingRewardsLock(DEPLOYED_CREAM_POOL);
 
     // Last harvest
     uint256 public lastHarvest = 0;
@@ -40,7 +41,7 @@ contract Whipper {
         breaker = _breaker;
     }
 
-    function whip() public {
+    function whip() public nonReentrant {
         // prevent people from burning gas if multiple harvests are submitted within short period of time
         if (lastHarvest > 0) {
             require(lastHarvest + 20 minutes <= block.timestamp, "!harvest-time or harvest debounced");
@@ -69,13 +70,40 @@ contract Whipper {
         creamPool.stake(balance);
     }
 
+    function migratePool(address _newPool) public onlyOwner canWithdraw requireRewardsEnded nonReentrant {
+        // pull out all funds (if possible)
+        // collect all rewards
+        creamPool.exit();
+        // set new creamPool
+        creamPool = StakingRewardsLock(_newPool);
+        // send the regular whip 5% fee to admin, covering gas costs of the migration
+        uint256 amount = cream.balanceOf(address(this));
+        uint256 reward = amount.mul(5).div(100);
+        cream.transfer(owner, reward);
+        // deposit all assets again, maintaining user wCream ratio
+        _creamToCr(cream.balanceOf(address(this)));
+        uint256 balance = crCream.balanceOf(address(this));
+        crCream.approve(address(creamPool),balance);
+        creamPool.stake(crCream.balanceOf(address(this)));
+    }
+
+    // if there is remaining rewards to whip for example, we can exit the pool and claim back reward if there are no more users in whipper
+    function withdrawDust() public onlyOwner nonReentrant {
+        require(wCream.totalSupply() == 0,
+            "can only withdraw dust if everyone is out of the pool"
+        );
+        creamPool.exit();
+        _crToCream(crCream.balanceOf(address(this)));
+        cream.transfer(owner, cream.balanceOf(address(this)));
+    }
+
     // **** Withdraw / Deposit functions ****
 
     function withdrawAll() external {
         withdraw(wCream.balanceOf(msg.sender));
     }
 
-    function withdraw(uint256 _shares) public canWithdraw {
+    function withdraw(uint256 _shares) public canWithdraw nonReentrant {
         uint256 crPTBalance = creamPool.balanceOf(address(this));
 
         uint256 amount = _shares.mul(crPTBalance).div(wCream.totalSupply());
@@ -97,7 +125,7 @@ contract Whipper {
         deposit(cream.balanceOf(msg.sender));
     }
 
-    function deposit(uint256 _amount) public canReinvest {
+    function deposit(uint256 _amount) public canReinvest nonReentrant {
         cream.transferFrom(msg.sender, address(this), _amount);
 
         uint256 _pool = creamPool.balanceOf(address(this));
@@ -148,6 +176,14 @@ contract Whipper {
         require(
             creamPool.breaker() || creamPool.stakeLock(address(this)) < block.number,
             "stake locked by cream"
+        );
+        _;
+    }
+
+    modifier requireRewardsEnded() {
+        require(
+            creamPool.periodFinish() >= block.timestamp,
+            "pool is not closed"
         );
         _;
     }
