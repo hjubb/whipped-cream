@@ -19,7 +19,7 @@ def other():
 
 @pytest.fixture()
 def owner():
-    yield accounts.at(os.getenv("OWNER_ADDRESS"))
+    yield accounts.at(os.getenv("DEPLOY_ADDRESS"))
 
 
 @pytest.fixture
@@ -130,6 +130,10 @@ def test_migrations(whipper, me, other, pm, cream_owner, owner):
 
     assert isclose(w_cream.balanceOf(me), w_cream.balanceOf(other) * user_ratio, rel_tol=0.00001)
 
+    time = chain.time()
+
+    chain.sleep(staking_rewards_lock.periodFinish() - time + 1)
+
     whipper.migratePool(os.getenv("MIGRATION_CREAM_POOL"), {'from': owner})
 
     approve_token(w_cream, me, whipper)
@@ -155,6 +159,23 @@ def test_other_user_migrate(whipper, me, pm, cream_owner):
 
     approve_token(w_cream, me, whipper)
     whipper.withdrawAll({'from': me})
+    chain.revert()
+
+def test_cant_migrate_before_end(whipper, me, pm, cream_owner, owner):
+    chain.snapshot()
+    staking_rewards_lock, cream, w_cream = get_tokens(whipper, pm)
+    staking_rewards_lock.setBreaker(True, {'from': cream_owner})
+    approve_token(cream, me, whipper)
+    my_balance = cream.balanceOf(me)
+
+    whipper.depositAll({'from': me})
+
+    with brownie.reverts("pool is not closed"):
+        whipper.migratePool(os.getenv("MIGRATION_CREAM_POOL"), {'from': owner})
+
+    approve_token(w_cream, me, whipper)
+    whipper.withdrawAll({'from': me})
+    assert cream.balanceOf(me) > my_balance
     chain.revert()
 
 

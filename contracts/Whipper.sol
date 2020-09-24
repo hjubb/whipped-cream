@@ -181,7 +181,7 @@ contract Whipper is ReentrancyGuard {
 
     modifier requireRewardsEnded() {
         require(
-            creamPool.periodFinish() >= block.timestamp + 12 hours,
+            block.timestamp + 12 hours >= creamPool.periodFinish(),
             "pool is not closed"
         );
         _;
